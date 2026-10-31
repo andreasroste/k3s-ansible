@@ -28,6 +28,62 @@
     name: kernel-uek-modules-extra   # Load br_netfilter module (UEK kernel)
     update_cache: "{{ airgap_dir is not defined }}"
 
+
+
+- name: Update packages
+  when:
+    - ansible_facts['os_family'] == 'Alpine'
+  become: true
+  community.general.apk:
+    update_cache: true
+- name: Install prereq packages
+  when:
+    - ansible_facts['os_family'] == 'Alpine'
+  become: true
+  community.general.apk:
+    name: "{{ item }}"
+    state: latest
+  loop:
+    - curl
+    - bash
+    - coreutils
+    - findutils
+    - util-linux
+    - mount
+    - blkid
+    - nfs-utils
+    - iptables
+- name: Add kernel modules
+  when:
+    - ansible_facts['service_mgr'] == 'openrc'
+  become: true
+  ansible.builtin.copy:
+    src: kernel-module-k3s.conf
+    dest: /etc/modules-load.d/k3s.conf
+- name: Enable modules
+  when:
+    - ansible_facts['service_mgr'] == 'openrc'
+  become: true
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - br_netfilter
+    - overlay
+    - nf_conntrack
+- name: Add and start cgroups
+  when:
+    - ansible_facts['os_family'] == 'Alpine'
+  become: true
+  ansible.builtin.service:
+    name: cgroups
+    state: started
+    enabled: true
+    runlevel: default
+
+
+
+
 - name: Enable IPv4 forwarding
   ansible.posix.sysctl:
     name: net.ipv4.ip_forward
@@ -242,7 +298,7 @@
     value: "1"
     state: present
     reload: true
-  when: (ansible_facts['os_family'] == 'RedHat' or ansible_facts['distribution'] == 'Archlinux')
+  when: (ansible_facts['os_family'] == 'RedHat' or ansible_facts['distribution'] == 'Archlinux' or ansible_facts['distribution'] == 'Alpine')
   loop:
     - net.bridge.bridge-nf-call-iptables
     - net.bridge.bridge-nf-call-ip6tables
